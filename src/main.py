@@ -1,14 +1,14 @@
 import os
 import logging
+import urllib
 from datetime import datetime, timedelta
+import xml.etree.ElementTree as ET
 
 from enum import Enum
 from time import sleep, time
 
 import requests
 
-
-# startup: TT Plug on, PreAMP Plug off (output state)
 
 class SwitchStatus(Enum):
     ERROR = 0
@@ -44,54 +44,45 @@ def get_switch_status(url: str, switch_id: int = 0):
     else:
         return SwitchStatus.IDLE if response_json["apower"] == 0 else SwitchStatus.RUNNING
 
-# def send_denon_command(command: str):
-#     receiver_url = os.getenv("RECEIVER_URL")
-#     timestamp = time() * 1000
-#     command_url = f"{receiver_url}/ajax/globals/set_config?{command}&_={timestamp}"
-#     response = requests.get(command_url, verify=False)
-#     if response.status_code != 200:
-#         raise Exception(f"Failed to turn on Denon receiver. Status code: {response.status_code}")
+
 def send_denon_command(command: str):
     receiver_ip = os.getenv("RECEIVER_IP")
     response = requests.get(f"http://{receiver_ip}:8080/goform/formiPhoneAppDirect.xml?{command}")
-    print(response.text)
+    print(response.url)
     if response.status_code != 200:
         raise Exception(f"Failed to turn on Denon receiver. Status code: {response.status_code}")
 
 def startup_receiver():
-    for cmd in ["PWON", "SICD", "MV45", "MSPURE%20DIRECT"]:
-        send_denon_command(cmd)
-    # power_on = "type=4&data=<MainZone><Power>1</Power></MainZone>" # 3 is off
-    # send_denon_command(power_on)
-    # sleep(2)
+    commands = [
+        f"SI{os.getenv('TT_INPUT')}",
+        "MSSTEREO",  # Direct modes are toggles set to another mode then target to ensure correct mode
+        f"MS{os.getenv("SOUND_MODE")}",
+        "MV" + str(80 - int(os.getenv("VOLUME"))), # 80 = 0DB in Denon
+        f"SI{os.getenv('TT_INPUT')}",
+    ]
 
-    # todo mode = prue direct, volume = 45
-    # change_input_url = f'https://192.168.55.22:10443/ajax/globals/set_config?type=7&data=%3CSource%20zone%3D%221%22%20index%3D%229%22%3E%3C%2FSource%3E&_={timestamp}'
-    # set_input_cd = 'type=7&data=<Source zone="1" index="9"></Source>'
-    # volume = 'type=7&data=<MasterVolume><Value>45</Value></MasterVolume>'
-    # send_denon_command(set_input_cd)
-    # send_denon_command(volume)
+    for cmd in commands:
+        send_denon_command(cmd)
+        sleep(2)
 
 def shutdown_receiver():
-    # todo skip if input is not CD
-    send_denon_command("PWSTANDBY")
-    # power_off = "type=4&data=<MainZone><Power>1</Power></MainZone>"
-    # send_denon_command(power_off)
-#
-# http://192.168.55.22:8080/goform/formiPhoneAppDirect.xml?SICD
-# http://192.168.55.22:8080/goform/formiPhoneAppDirect.xml?MV45
-#http://192.168.55.22:8080/goform/formiPhoneAppDirect.xml?MSPURE%20DIRECT
+    status = get_denon_status()
+    if status["InputFuncSelect"] == os.getenv("TT_INPUT"):
+        send_denon_command("PWSTANDBY")
+
+
 #todo add disconnect recovery
 def run():
     # turn on TT plug and turn off PreAMP plug
+    tt_url = os.getenv("TT_URL")
+    pre_url = os.getenv("PRE_AMP_URL")
     set_switch(tt_url, True)
-    set_switch(amp_url, False)
-    run_start = datetime.now() # todo might be cleaner to set this to last state change time
+    set_switch(pre_url, False)
     logger = logging.getLogger()
+    logger.info("Starting TT control program")
 
-    # if we want to keep the tranisitions seperate from actions we can make action enum
-    # actions: None, Startup, Start Warn, Stop Warn, Shutdown
     program_state = PROGRAM_STATE.IDLE
+    state_start = datetime.now()
     while True:
         status = get_switch_status(tt_url)
         old_program_state = program_state
@@ -99,56 +90,47 @@ def run():
         match program_state:
             case PROGRAM_STATE.IDLE:
                 if status == SwitchStatus.RUNNING:
-                    # todo put startup code here change state to running
-                    program_state = PROGRAM_STATE.STARTUP
+                    startup_receiver()
+                    set_switch(pre_url, True)
+                    program_state = PROGRAM_STATE.RUNNING
             case PROGRAM_STATE.RUNNING:
                 if status == SwitchStatus.IDLE:
                     program_state = PROGRAM_STATE.STANDBY
-                elif datetime.now() - run_start > timedelta(minutes=25):
-                    # todo put warn code here change state to warn
-                    program_state = PROGRAM_STATE.WARN_SETUP
+                elif datetime.now() - state_start > timedelta(minutes=25):
+                    logger.info("Stop the TT!!")
+                    # todo create warning mechanism
+                    program_state = PROGRAM_STATE.WARN
             case PROGRAM_STATE.STANDBY:
-                # resuming playback
-                if status == SwitchStatus.RUNNING:
-                    # todo reset run start
+                if status == SwitchStatus.RUNNING: # resuming playback
+                    state_start = datetime.now()
                     program_state = PROGRAM_STATE.RUNNING
-                # todo this check seems wong
-                elif datetime.now() - run_start > timedelta(seconds=int(os.getenv("SHUTDOWN_DELAY"))):
-                    #todo do shutdown here set state to idle
-                    program_state = PROGRAM_STATE.SHUTDOWN
+                elif datetime.now() - state_start > timedelta(seconds=int(os.getenv("SHUTDOWN_DELAY"))):
+                    shutdown_receiver()
+                    set_switch(tt_url, False)
+                    program_state = PROGRAM_STATE.IDLE
             case PROGRAM_STATE.WARN:
                 if status == SwitchStatus.IDLE:
                     # todo turn off warning
                     program_state = PROGRAM_STATE.IDLE
 
         if program_state != old_program_state:
+            state_start = datetime.now()
             logger.info(f"Transitioning from {old_program_state} to {program_state}")
 
-
-        # Perform state actions
-        match program_state:
-            case PROGRAM_STATE.STARTUP:
-                # todo start denon
-                set_switch(amp_url, True)
-                run_start = datetime.now()
-                program_state = PROGRAM_STATE.RUNNING
-                logger.info("Started preamp")
-            case PROGRAM_STATE.SHUTDOWN:
-                # todo shutdown denon
-                set_switch(amp_url, False)
-                logger.info("Shutdown preamp")
         sleep(5)
 
 def get_denon_status():
     url = f"http://{os.getenv('RECEIVER_IP')}:8080/goform/formMainZone_MainZoneXmlStatusLite.xml"
     response = requests.get(url)
-    import xml.etree.ElementTree as ET
-    print(response.text)
     root = ET.fromstring(response.text)
-    # root = tree.find("Power")
-    for x in root.find("Power"):
-        print(x.text)
-    # print(response.json())
+    print(response.text)
+    status = {
+        "PowerOn": root.find("Power")[0].text == "ON",
+        "InputFuncSelect": root.find("InputFuncSelect")[0].text,
+        "MasterVolume": float(root.find("MasterVolume")[0].text),
+        "Mute": root.find("Mute")[0].text != 'off'
+    }
+    return status
 
 if __name__ == '__main__':
     try:
@@ -156,8 +138,5 @@ if __name__ == '__main__':
         load_dotenv()
     except ImportError:
         pass
-    #log to stdout
     logging.basicConfig(level=logging.INFO)
-    amp_url = os.getenv("PRE_AMP_URL")
-    tt_url = os.getenv("TT_URL")
-    get_denon_status()
+    run()
