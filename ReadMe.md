@@ -4,7 +4,7 @@
 ![Docker](https://img.shields.io/badge/docker-local-blue?logo=docker&logoColor=white)
 ![Ruff](https://img.shields.io/badge/ruff-blue?logo=ruff&logoColor=white)
 ## Motivation
-Vinyl playback is already a process and noby wants to fiddle with multiple devices and settings. 
+Vinyl playback is already a process and nobody wants to fiddle with multiple devices and settings. 
 Additionally, my pre-amp, Schiit Skoll, lacks an accessible power button.
 
 ## Overview
@@ -15,9 +15,12 @@ Devices are powered off after a specified delay when the TT is not in use.
 This code is unlikely to be of direct use to anyone else but serves as a reference for similar projects.
 
 ## Implementation
-The TT and PreAMP are connected to Shelly smart plugs with power monitoring. 
+The TT and PreAMP are connected to Shelly smart plugs with power monitoring.
 The receiver is a Denon AVR connected to the network.
 Devices are controlled and monitored using HTTP requests.
+Additional connectivity on the Shelly devices (Access Point, Cloud, MQTT, Bluetooth) is disabled for security and congestion reasons.
+
+The Python script monitors the state of the TT plug and configures the other devices accordingly.
 
 
 ## Running the Program
