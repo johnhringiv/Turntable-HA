@@ -23,11 +23,13 @@ class PROGRAM_STATE(Enum):
     WARN = 5
     STANDBY = 6
 
+
 def set_switch(url: str, on: bool, switch_id: int = 0):
     command_url = f"{url}/rpc/Switch.Set?id={switch_id}&on={str(on).lower()}"
     response = requests.get(command_url)
     if response.status_code != 200:
         raise Exception(f"Failed to set switch state to {on}")
+
 
 def get_switch_status(url: str, switch_id: int = 0):
     response = requests.get(f"{url}/rpc/Switch.GetStatus", {"id": switch_id})
@@ -37,22 +39,29 @@ def get_switch_status(url: str, switch_id: int = 0):
     elif not response_json["output"]:
         return SwitchStatus.OFF
     else:
-        return SwitchStatus.IDLE if response_json["apower"] == 0 else SwitchStatus.RUNNING
+        return (
+            SwitchStatus.IDLE if response_json["apower"] == 0 else SwitchStatus.RUNNING
+        )
 
 
 def send_denon_command(command: str):
     receiver_ip = os.getenv("RECEIVER_IP")
-    response = requests.get(f"http://{receiver_ip}:8080/goform/formiPhoneAppDirect.xml?{command}")
+    response = requests.get(
+        f"http://{receiver_ip}:8080/goform/formiPhoneAppDirect.xml?{command}"
+    )
     print(response.url)
     if response.status_code != 200:
-        raise Exception(f"Failed to turn on Denon receiver. Status code: {response.status_code}")
+        raise Exception(
+            f"Failed to turn on Denon receiver. Status code: {response.status_code}"
+        )
+
 
 def startup_receiver():
     commands = [
         f"SI{os.getenv('TT_INPUT')}",
         "MSSTEREO",  # Direct modes are toggles set to another mode then target to ensure correct mode
-        f"MS{os.getenv("SOUND_MODE")}",
-        "MV" + str(80 - int(os.getenv("VOLUME"))), # 80 = 0DB in Denon
+        f"MS{os.getenv('SOUND_MODE')}",
+        "MV" + str(80 - int(os.getenv("VOLUME"))),  # 80 = 0DB in Denon
         f"SI{os.getenv('TT_INPUT')}",
     ]
 
@@ -60,13 +69,14 @@ def startup_receiver():
         send_denon_command(cmd)
         sleep(2)
 
+
 def shutdown_receiver():
     status = get_denon_status()
     if status["InputFuncSelect"] == os.getenv("TT_INPUT"):
         send_denon_command("PWSTANDBY")
 
 
-#todo add disconnect recovery
+# todo add disconnect recovery
 def run():
     # turn on TT plug and turn off PreAMP plug
     tt_url = os.getenv("TT_URL")
@@ -96,10 +106,12 @@ def run():
                     # todo create warning mechanism
                     program_state = PROGRAM_STATE.WARN
             case PROGRAM_STATE.STANDBY:
-                if status == SwitchStatus.RUNNING: # resuming playback
+                if status == SwitchStatus.RUNNING:  # resuming playback
                     state_start = datetime.now()
                     program_state = PROGRAM_STATE.RUNNING
-                elif datetime.now() - state_start > timedelta(seconds=int(os.getenv("SHUTDOWN_DELAY"))):
+                elif datetime.now() - state_start > timedelta(
+                    seconds=int(os.getenv("SHUTDOWN_DELAY"))
+                ):
                     shutdown_receiver()
                     set_switch(pre_url, False)
                     program_state = PROGRAM_STATE.IDLE
@@ -114,6 +126,7 @@ def run():
 
         sleep(5)
 
+
 def get_denon_status():
     url = f"http://{os.getenv('RECEIVER_IP')}:8080/goform/formMainZone_MainZoneXmlStatusLite.xml"
     response = requests.get(url)
@@ -123,19 +136,21 @@ def get_denon_status():
         "PowerOn": root.find("Power")[0].text == "ON",
         "InputFuncSelect": root.find("InputFuncSelect")[0].text,
         "MasterVolume": float(root.find("MasterVolume")[0].text),
-        "Mute": root.find("Mute")[0].text != 'off'
+        "Mute": root.find("Mute")[0].text != "off",
     }
     return status
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     run()

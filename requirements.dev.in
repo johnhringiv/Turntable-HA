@@ -1,0 +1,5 @@
+-r requirements.in
+pip-tools
+python-dotenv
+pre-commit
+ruff
