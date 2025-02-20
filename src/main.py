@@ -15,7 +15,7 @@ class SwitchStatus(Enum):
     RUNNING = 3
 
 
-class PROGRAM_STATE(Enum):
+class ProgramState(Enum):
     ERROR = 0
     IDLE = 1
     RUNNING = 3
@@ -85,43 +85,48 @@ def run():
     logger = logging.getLogger()
     logger.info("Starting TT control program")
 
-    program_state = PROGRAM_STATE.IDLE
+    program_state = ProgramState.IDLE
     state_start = datetime.now()
     while True:
         status = get_switch_status(tt_url)
         old_program_state = program_state
         # Check if we need to transition to a new state
         match program_state:
-            case PROGRAM_STATE.IDLE:
+            case ProgramState.IDLE:
                 if status == SwitchStatus.RUNNING:
                     startup_receiver()
                     set_switch(pre_url, True)
-                    program_state = PROGRAM_STATE.RUNNING
-            case PROGRAM_STATE.RUNNING:
+                    program_state = ProgramState.RUNNING
+            case ProgramState.RUNNING:
                 if status == SwitchStatus.IDLE:
-                    program_state = PROGRAM_STATE.STANDBY
+                    program_state = ProgramState.STANDBY
                 elif datetime.now() - state_start > timedelta(minutes=25):
                     logger.info("Stop the TT!!")
                     # todo create warning mechanism
-                    program_state = PROGRAM_STATE.WARN
-            case PROGRAM_STATE.STANDBY:
+                    program_state = ProgramState.WARN
+            case ProgramState.STANDBY:
                 if status == SwitchStatus.RUNNING:  # resuming playback
                     state_start = datetime.now()
-                    program_state = PROGRAM_STATE.RUNNING
+                    program_state = ProgramState.RUNNING
                 elif datetime.now() - state_start > timedelta(
                     seconds=int(os.getenv("SHUTDOWN_DELAY"))
                 ):
                     shutdown_receiver()
                     set_switch(pre_url, False)
-                    program_state = PROGRAM_STATE.IDLE
-            case PROGRAM_STATE.WARN:
+                    program_state = ProgramState.IDLE
+            case ProgramState.WARN:
                 if status == SwitchStatus.IDLE:
                     # todo turn off warning
-                    program_state = PROGRAM_STATE.IDLE
+                    program_state = ProgramState.IDLE
 
         if program_state != old_program_state:
             state_start = datetime.now()
             logger.info(f"Transitioning from {old_program_state} to {program_state}")
+
+        if status == SwitchStatus.ERROR:
+            logger.error(
+                "Error getting switch status program state will be static until recovery"
+            )
 
         sleep(5)
 
