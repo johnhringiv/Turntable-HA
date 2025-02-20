@@ -5,7 +5,7 @@ repos:
       - id: ruff-check
         name: Ruff check
         entry: ruff check
-        args: [--fix]
+        args: ["--fix", "--select=I", "--line-length=120"]
         language: system
         types: [file, python]
       - id: ruff-format

@@ -1,8 +1,7 @@
-import os
 import logging
-from datetime import datetime, timedelta
+import os
 import xml.etree.ElementTree as ET
-
+from datetime import datetime, timedelta
 from enum import Enum
 from time import sleep
 
