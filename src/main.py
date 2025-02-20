@@ -1,11 +1,10 @@
 import os
 import logging
-import urllib
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 
 from enum import Enum
-from time import sleep, time
+from time import sleep
 
 import requests
 
@@ -20,13 +19,9 @@ class SwitchStatus(Enum):
 class PROGRAM_STATE(Enum):
     ERROR = 0
     IDLE = 1
-    STARTUP = 2
     RUNNING = 3
-    WARN_SETUP = 4 # not needed
-    # if we have warn setup we'd also need warn shutdown
     WARN = 5
     STANDBY = 6
-    SHUTDOWN = 7
 
 def set_switch(url: str, on: bool, switch_id: int = 0):
     command_url = f"{url}/rpc/Switch.Set?id={switch_id}&on={str(on).lower()}"
@@ -106,7 +101,7 @@ def run():
                     program_state = PROGRAM_STATE.RUNNING
                 elif datetime.now() - state_start > timedelta(seconds=int(os.getenv("SHUTDOWN_DELAY"))):
                     shutdown_receiver()
-                    set_switch(tt_url, False)
+                    set_switch(pre_url, False)
                     program_state = PROGRAM_STATE.IDLE
             case PROGRAM_STATE.WARN:
                 if status == SwitchStatus.IDLE:
@@ -138,5 +133,9 @@ if __name__ == '__main__':
         load_dotenv()
     except ImportError:
         pass
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
     run()
