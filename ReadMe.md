@@ -48,6 +48,7 @@ Hardcoded values exist in the DockerFile as there's no sensitive information.
 | `SOUND_MODE`     | The sound mode for the receiver    | `PURE%20DIRECT`         |
 | `VOLUME`         | The volume level for the receiver  | `30`                    |
 | `SHUTDOWN_DELAY` | The shutdown delay in seconds      | `300`                   |
+ | `DB_FOLDER`      | The folder to store the database   | `/data`                 |
 
 
 ### Run With Python
@@ -58,9 +59,9 @@ Hardcoded values exist in the DockerFile as there's no sensitive information.
 
 ### Build and Run With Docker
  ```sh
- docker build -t turntable-home-automation .
- docker save -o turntable-home-automation turntable-home-automation # (optional)
- docker run  --volume path/to/db_folder:/data turntable-home-automation
+ docker build -t turntable-home-automation:latest .
+ docker save -o turntable-home-automation turntable-home-automation:latest # (optional)
+ docker run  --volume path/to/db_folder:/data turntable-home-automation:latest
  ```
 Note the volume mount required to persist the SQLite database.
 

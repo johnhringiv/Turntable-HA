@@ -11,7 +11,11 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container
-COPY src/ .
+COPY src/*.py .
+
+# Create a directory for the database
+RUN mkdir -p /data
+
 
 # Create a directory for the database
 RUN mkdir -p /data
@@ -25,6 +29,7 @@ ENV TT_INPUT="CD"
 ENV SOUND_MODE="PURE%20DIRECT"
 ENV VOLUME=30
 ENV SHUTDOWN_DELAY=300
+ENV DB_FOLDER="/data"
 
 # Run the application
 CMD ["python", "main.py"]
