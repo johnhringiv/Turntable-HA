@@ -34,18 +34,20 @@ The Python script monitors the state of the TT plug and configures the other dev
 ### Configuration
 The following environment variables are required. They can be set in a `.env` file for Python or the Dockerfile for Docker.
 Hardcoded values exist in the DockerFile as there's no sensitive information.
-```env
-RECEIVER_IP=<your_receiver_ip>
-TT_URL=<your_turntable_url>
-PRE_AMP_URL=<your_pre_amp_url>
-TT_INPUT=<your_tt_input>
-SOUND_MODE=<your_sound_mode>
-VOLUME=<your_volume_level>
-SHUTDOWN_DELAY=<your_shutdown_delay_in_seconds>
-```
+
+| Variable         | Description                        | Example Value           |
+|------------------|------------------------------------|-------------------------|
+| `RECEIVER_IP`    | The IP address of your receiver    | `192.168.55.22`         |
+| `TT_URL`         | The URL of your turntable plug     | `http://192.168.55.203` |
+| `PRE_AMP_URL`    | The URL of your pre-amplifier plug | `http://192.168.55.205` |
+| `TT_INPUT`       | The input for the turntable        | `CD`                    |
+| `SOUND_MODE`     | The sound mode for the receiver    | `PURE%20DIRECT`         |
+| `VOLUME`         | The volume level for the receiver  | `30`                    |
+| `SHUTDOWN_DELAY` | The shutdown delay in seconds      | `300`                   |
+
 
 ### Run With Python
- ```sh
+```sh
  pip install -r requirements.txt
  python src/main.py
  ```

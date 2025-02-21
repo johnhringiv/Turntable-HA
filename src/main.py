@@ -30,7 +30,7 @@ def set_switch(url: str, on: bool, switch_id: int = 0):
         raise Exception(f"Failed to set switch state to {on}")
 
 
-def get_switch_status(url: str, switch_id: int = 0):
+def get_switch_status(url: str, switch_id: int = 0) -> SwitchStatus:
     response = requests.get(f"{url}/rpc/Switch.GetStatus", {"id": switch_id})
     response_json = response.json()
     if response.status_code != 200:
@@ -75,7 +75,6 @@ def shutdown_receiver():
         send_denon_command("PWSTANDBY")
 
 
-# todo add disconnect recovery
 def run():
     # turn on TT plug and turn off PreAMP plug
     tt_url = os.getenv("TT_URL")
@@ -91,20 +90,19 @@ def run():
         status = get_switch_status(tt_url)
         old_program_state = program_state
         # Check if we need to transition to a new state
-        match program_state:
-            case ProgramState.IDLE:
-                if status == SwitchStatus.RUNNING:
-                    startup_receiver()
-                    set_switch(pre_url, True)
-                    program_state = ProgramState.RUNNING
-            case ProgramState.RUNNING:
+        match (program_state, status):
+            case (ProgramState.IDLE, SwitchStatus.RUNNING):
+                set_switch(pre_url, True)
+                startup_receiver()
+                program_state = ProgramState.RUNNING
+            case (ProgramState.RUNNING, _):
                 if status == SwitchStatus.IDLE:
                     program_state = ProgramState.STANDBY
                 elif datetime.now() - state_start > timedelta(minutes=25):
                     logger.info("Stop the TT!!")
                     # todo create warning mechanism
                     program_state = ProgramState.WARN
-            case ProgramState.STANDBY:
+            case (ProgramState.STANDBY, _):
                 if status == SwitchStatus.RUNNING:  # resuming playback
                     state_start = datetime.now()
                     program_state = ProgramState.RUNNING
@@ -114,10 +112,9 @@ def run():
                     shutdown_receiver()
                     set_switch(pre_url, False)
                     program_state = ProgramState.IDLE
-            case ProgramState.WARN:
-                if status == SwitchStatus.IDLE:
-                    # todo turn off warning
-                    program_state = ProgramState.IDLE
+            case (ProgramState.WARN, SwitchStatus.IDLE):
+                # todo turn off warning
+                program_state = ProgramState.IDLE
 
         if program_state != old_program_state:
             state_start = datetime.now()
@@ -135,7 +132,6 @@ def get_denon_status():
     url = f"http://{os.getenv('RECEIVER_IP')}:8080/goform/formMainZone_MainZoneXmlStatusLite.xml"
     response = requests.get(url)
     root = ET.fromstring(response.text)
-    print(response.text)
     status = {
         "PowerOn": root.find("Power")[0].text == "ON",
         "InputFuncSelect": root.find("InputFuncSelect")[0].text,
