@@ -13,6 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY src/ .
 
+# Create a directory for the database
+RUN mkdir -p /data
+
+
 # Set environment variables, these aren't secrets so it's fine to set them here
 ENV RECEIVER_IP="192.168.55.22"
 ENV TT_URL="http://192.168.55.203"

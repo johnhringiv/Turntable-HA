@@ -6,13 +6,17 @@
 ## Motivation
 Vinyl playback is already a process and nobody wants to fiddle with multiple devices and settings. 
 Additionally, my pre-amp, Schiit Skoll, lacks an accessible power button.
+As a bonus we can monitor playback time to infer stylus life.
 
-## Overview
-This application automates the home theater setup required for turntable (TT) playback.
-When the TT is powered on we power on the pre-amplifier (PreAmp) and set the receiver to the correct input, volume, and sound mode.
-Devices are powered off after a specified delay when the TT is not in use.
+### Features
+* Power on pre-amp when turntable is powered on
+* Set receiver to correct input, volume, and sound mode when turntable is powered on
+* Power off devices after a delay when turntable is not in use
+  * Receiver is not powered off if it is in use by another device
+* Record playback time in a SQLite database
 
 This code is unlikely to be of direct use to anyone else but serves as a reference for similar projects.
+
 
 ## Implementation
 The TT and PreAMP are connected to Shelly smart plugs with power monitoring.
@@ -56,9 +60,9 @@ Hardcoded values exist in the DockerFile as there's no sensitive information.
  ```sh
  docker build -t turntable-home-automation .
  docker save -o turntable-home-automation turntable-home-automation # (optional)
- docker run turntable-home-automation
+ docker run  --volume path/to/db_folder:/data turntable-home-automation
  ```
+Note the volume mount required to persist the SQLite database.
 
 ## Future Work
 * Use Philips Hue to blink lights in warning mode
-* Record play history (useful for stylus life)

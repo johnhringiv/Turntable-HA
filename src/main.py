@@ -1,11 +1,13 @@
 import logging
 import os
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from time import sleep
 
 import requests
+
+from record_plays_db import RecordPlaysDB
 
 
 class SwitchStatus(Enum):
@@ -48,7 +50,6 @@ def send_denon_command(command: str):
     response = requests.get(
         f"http://{receiver_ip}:8080/goform/formiPhoneAppDirect.xml?{command}"
     )
-    print(response.url)
     if response.status_code != 200:
         raise Exception(
             f"Failed to turn on Denon receiver. Status code: {response.status_code}"
@@ -61,7 +62,7 @@ def startup_receiver():
         "MSSTEREO",  # Direct modes are toggles set to another mode then target to ensure correct mode
         f"MS{os.getenv('SOUND_MODE')}",
         "MV" + str(80 - int(os.getenv("VOLUME"))),  # 80 = 0DB in Denon
-        f"SI{os.getenv('TT_INPUT')}",
+        f"SI{os.getenv('TT_INPUT')}",  # stop other devices from hijacking the input
     ]
 
     for cmd in commands:
@@ -84,11 +85,17 @@ def run():
     logger = logging.getLogger()
     logger.info("Starting TT control program")
 
+    db = RecordPlaysDB()
+    cur_session_id = db.get_next_session_id()
+
     program_state = ProgramState.IDLE
-    state_start = datetime.now()
+    state_start = datetime.now(timezone.utc)
     while True:
         status = get_switch_status(tt_url)
         old_program_state = program_state
+        time_in_state = timedelta(
+            seconds=int((datetime.now(timezone.utc) - state_start).total_seconds())
+        )
         # Check if we need to transition to a new state
         match (program_state, status):
             case (ProgramState.IDLE, SwitchStatus.RUNNING):
@@ -98,26 +105,38 @@ def run():
             case (ProgramState.RUNNING, _):
                 if status == SwitchStatus.IDLE:
                     program_state = ProgramState.STANDBY
-                elif datetime.now() - state_start > timedelta(minutes=25):
+                    if time_in_state > timedelta(
+                        seconds=60
+                    ):  # ignore short plays to allow for startup toggles
+                        db.insert_record_play(time_in_state, cur_session_id)
+                        total_playtime = timedelta(seconds=db.get_total_runtime())
+                        logger.info(
+                            f"Recorded playtime of {time_in_state}, total playtime is {total_playtime}"
+                        )
+                elif time_in_state > timedelta(minutes=25):
                     logger.info("Stop the TT!!")
                     # todo create warning mechanism
                     program_state = ProgramState.WARN
             case (ProgramState.STANDBY, _):
                 if status == SwitchStatus.RUNNING:  # resuming playback
-                    state_start = datetime.now()
                     program_state = ProgramState.RUNNING
-                elif datetime.now() - state_start > timedelta(
+                elif time_in_state > timedelta(
                     seconds=int(os.getenv("SHUTDOWN_DELAY"))
                 ):
                     shutdown_receiver()
                     set_switch(pre_url, False)
+                    session_playtime = timedelta(
+                        seconds=db.get_session_runtime(cur_session_id)
+                    )
+                    logger.info(f"Ended session with playtime of {session_playtime}")
+                    cur_session_id += 1
                     program_state = ProgramState.IDLE
             case (ProgramState.WARN, SwitchStatus.IDLE):
                 # todo turn off warning
                 program_state = ProgramState.IDLE
 
         if program_state != old_program_state:
-            state_start = datetime.now()
+            state_start = datetime.now(timezone.utc)
             logger.info(f"Transitioning from {old_program_state} to {program_state}")
 
         if status == SwitchStatus.ERROR:
@@ -151,6 +170,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S %Z",
     )
     run()
