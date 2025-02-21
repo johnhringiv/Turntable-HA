@@ -17,10 +17,6 @@ COPY src/*.py .
 RUN mkdir -p /data
 
 
-# Create a directory for the database
-RUN mkdir -p /data
-
-
 # Set environment variables, these aren't secrets so it's fine to set them here
 ENV RECEIVER_IP="192.168.55.22"
 ENV TT_URL="http://192.168.55.203"

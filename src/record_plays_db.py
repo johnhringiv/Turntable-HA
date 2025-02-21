@@ -4,6 +4,7 @@ Simple SQLite3 Database to store record plays
 Future: Log Stylus Changes and calculate stylus life
 """
 
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,7 +12,8 @@ from pathlib import Path
 
 class RecordPlaysDB:
     def __init__(self):
-        self.db_path = Path("data/record_plays.db")
+        db_folder = Path(os.getenv("DB_FOLDER"))
+        self.db_path = db_folder / "record_plays.db"
         self.db_path.parent.mkdir(exist_ok=True)
         self._conn = sqlite3.connect(self.db_path)
         self._cursor = self._conn.cursor()
