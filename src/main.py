@@ -1,10 +1,11 @@
+import asyncio
 import logging
 import os
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from time import sleep
 
+import denonavr
 import requests
 
 from record_plays_db import RecordPlaysDB
@@ -45,43 +46,47 @@ def get_switch_status(url: str, switch_id: int = 0) -> SwitchStatus:
         )
 
 
-def send_denon_command(command: str):
-    receiver_ip = os.getenv("RECEIVER_IP")
-    response = requests.get(
-        f"http://{receiver_ip}:8080/goform/formiPhoneAppDirect.xml?{command}"
-    )
-    if response.status_code != 200:
-        raise Exception(
-            f"Failed to turn on Denon receiver. Status code: {response.status_code}"
-        )
+async def get_denon():
+    d = denonavr.DenonAVR(os.getenv("RECEIVER_IP"))
+    await d.async_setup()
+    await d.async_update()
+    return d
 
 
-def startup_receiver():
-    commands = [
-        f"SI{os.getenv('TT_INPUT')}",
-        "MSSTEREO",  # Direct modes are toggles set to another mode then target to ensure correct mode
-        f"MS{os.getenv('SOUND_MODE')}",
-        "MV" + str(80 - int(os.getenv("VOLUME"))),  # 80 = 0DB in Denon
-        f"SI{os.getenv('TT_INPUT')}",  # stop other devices from hijacking the input
-    ]
+async def startup_receiver(d):
+    # todo see if we can tighten the timing
+    # do we need the delays after boot?
+    await d.async_power_on()
+    await asyncio.sleep(10)  # wait for receiver to boot and inputs to be hijacked
 
-    for cmd in commands:
-        send_denon_command(cmd)
-        sleep(2)
+    # we sleep inbetween commands to allow the receiver to process them
+    await d.async_set_input_func(os.getenv("TT_INPUT"))
+    await asyncio.sleep(2)
+    await d.async_update()  # we want to check the sound mode for the new input
 
+    if d.sound_mode != os.getenv("SOUND_MODE"):  # todo change in Env
+        await d.async_set_sound_mode(os.getenv("SOUND_MODE"))
+        await asyncio.sleep(2)
 
-def shutdown_receiver():
-    status = get_denon_status()
-    if status["InputFuncSelect"] == os.getenv("TT_INPUT"):
-        send_denon_command("PWSTANDBY")
+    await d.async_set_volume(float(os.getenv("VOLUME")))  # todo change in Env
 
 
-def run():
-    # turn on TT plug and turn off PreAMP plug
+async def shutdown_receiver(d: denonavr.DenonAVR):
+    await d.async_update()
+    if d.input_func == os.getenv("TT_INPUT"):
+        await d.async_power_off()
+
+
+async def run():
     tt_url = os.getenv("TT_URL")
     pre_url = os.getenv("PRE_AMP_URL")
     set_switch(tt_url, True)
+
+    # avoid turning off the preamp if the AMP is on the input to prevent pops
+    denon = await get_denon()
+    await shutdown_receiver(denon)
     set_switch(pre_url, False)
+
     logger = logging.getLogger()
     logger.info("Starting TT control program")
 
@@ -100,7 +105,7 @@ def run():
         match (program_state, status):
             case (ProgramState.IDLE, SwitchStatus.RUNNING):
                 set_switch(pre_url, True)
-                startup_receiver()
+                await startup_receiver(denon)
                 program_state = ProgramState.RUNNING
             case (ProgramState.RUNNING, _):
                 if status == SwitchStatus.IDLE:
@@ -117,13 +122,14 @@ def run():
                     logger.info("Stop the TT!!")
                     # todo create warning mechanism
                     program_state = ProgramState.WARN
+
             case (ProgramState.STANDBY, _):
                 if status == SwitchStatus.RUNNING:  # resuming playback
                     program_state = ProgramState.RUNNING
                 elif time_in_state > timedelta(
                     seconds=int(os.getenv("SHUTDOWN_DELAY"))
                 ):
-                    shutdown_receiver()
+                    await shutdown_receiver(denon)
                     set_switch(pre_url, False)
                     session_playtime = timedelta(
                         seconds=db.get_session_runtime(cur_session_id)
@@ -144,20 +150,7 @@ def run():
                 "Error getting switch status program state will be static until recovery"
             )
 
-        sleep(5)
-
-
-def get_denon_status():
-    url = f"http://{os.getenv('RECEIVER_IP')}:8080/goform/formMainZone_MainZoneXmlStatusLite.xml"
-    response = requests.get(url)
-    root = ET.fromstring(response.text)
-    status = {
-        "PowerOn": root.find("Power")[0].text == "ON",
-        "InputFuncSelect": root.find("InputFuncSelect")[0].text,
-        "MasterVolume": float(root.find("MasterVolume")[0].text),
-        "Mute": root.find("Mute")[0].text != "off",
-    }
-    return status
+        sleep(2)
 
 
 if __name__ == "__main__":
@@ -172,4 +165,4 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S %Z",
     )
-    run()
+    asyncio.run(run())

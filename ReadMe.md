@@ -38,6 +38,7 @@ The Python script monitors the state of the TT plug and configures the other dev
 ### Configuration
 The following environment variables are required. They can be set in a `.env` file for Python or the Dockerfile for Docker.
 Hardcoded values exist in the DockerFile as there's no sensitive information.
+See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for valid receiver configuration values.
 
 | Variable         | Description                        | Example Value           |
 |------------------|------------------------------------|-------------------------|
@@ -45,8 +46,8 @@ Hardcoded values exist in the DockerFile as there's no sensitive information.
 | `TT_URL`         | The URL of your turntable plug     | `http://192.168.55.203` |
 | `PRE_AMP_URL`    | The URL of your pre-amplifier plug | `http://192.168.55.205` |
 | `TT_INPUT`       | The input for the turntable        | `CD`                    |
-| `SOUND_MODE`     | The sound mode for the receiver    | `PURE%20DIRECT`         |
-| `VOLUME`         | The volume level for the receiver  | `30`                    |
+| `SOUND_MODE`     | The sound mode for the receiver    | `PURE DIRECT`           |
+| `VOLUME`         | The volume level for the receiver  | `-30`                   |
 | `SHUTDOWN_DELAY` | The shutdown delay in seconds      | `300`                   |
  | `DB_FOLDER`      | The folder to store the database   | `/data`                 |
 
