@@ -47,12 +47,17 @@ class RecordPlaysDB:
         self._cursor.execute(
             "SELECT SUM(runtime) FROM record_plays WHERE session_id = ?", (session_id,)
         )
-        result = self._cursor.fetchone()
-        return result[0]
+        result = self._cursor.fetchone()[0]
+        if result is None:
+            result = 0
+        return result
 
     def get_total_runtime(self) -> int:
         self._cursor.execute("SELECT SUM(runtime) FROM record_plays")
-        return self._cursor.fetchone()[0]
+        result = self._cursor.fetchone()[0]
+        if result is None:
+            result = 0
+        return result
 
 
 if __name__ == "__main__":
