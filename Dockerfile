@@ -1,8 +1,11 @@
 # Use the official Python image from the Docker Hub
-FROM python:3.13 AS builder
+FROM python:3.13-alpine AS builder
 
 # Set the working directory in the container
 WORKDIR /app
+
+RUN apk update && \
+    apk add --no-cache gcc musl-dev linux-headers
 
 RUN python -m venv /opt/venv
 # Enable venv
@@ -11,9 +14,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install the dependencies
 RUN --mount=type=bind,source=requirements.txt,target=requirements.txt \
     pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    CFLAGS="-Wno-int-conversion" pip install --no-cache-dir -r requirements.txt
 
-FROM python:3.13-slim
+FROM python:3.13-alpine
 
 WORKDIR /app
 
