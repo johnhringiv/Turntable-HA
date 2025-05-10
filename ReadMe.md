@@ -54,8 +54,8 @@ See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for va
 
 ### Run With Python
 ```sh
- pip install -r requirements.txt
- python src/main.py
+ uv pip sync uv.lock
+ python turntable_ha/main.py
  ```
 
 ### Build and Run With Docker
@@ -67,4 +67,4 @@ See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for va
 Note the volume mount required to persist the SQLite database.
 
 ## Future Work
-* Use Philips Hue to blink lights in warning mode
+* Use Pushbullet to send notifications to my phone for warning mode

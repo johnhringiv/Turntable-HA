@@ -7,7 +7,6 @@ from time import sleep
 
 import denonavr
 import httpx
-
 from record_plays_db import RecordPlaysDB
 
 
