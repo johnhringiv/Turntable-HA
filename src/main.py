@@ -6,7 +6,7 @@ from enum import Enum
 from time import sleep
 
 import denonavr
-import requests
+import httpx
 
 from record_plays_db import RecordPlaysDB
 
@@ -26,66 +26,85 @@ class ProgramState(Enum):
     STANDBY = 6
 
 
-def set_switch(url: str, on: bool, switch_id: int = 0):
-    command_url = f"{url}/rpc/Switch.Set?id={switch_id}&on={str(on).lower()}"
-    response = requests.get(command_url)
-    if response.status_code != 200:
-        raise Exception(f"Failed to set switch state to {on}")
+class SwitchController:
+    def __init__(self, url: str):
+        self.url = url
+        self._status = None
 
+    async def async_update_status(self, switch_id: int = 0):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.url}/rpc/Switch.GetStatus", params={"id": switch_id}
+            )
+        response_json = response.json()
+        if response.status_code != 200:
+            self._status = SwitchStatus.ERROR
+        elif not response_json["output"]:
+            self._status = SwitchStatus.OFF
+        else:
+            self._status = (
+                SwitchStatus.IDLE
+                if response_json["apower"] == 0
+                else SwitchStatus.RUNNING
+            )
 
-def get_switch_status(url: str, switch_id: int = 0) -> SwitchStatus:
-    response = requests.get(f"{url}/rpc/Switch.GetStatus", {"id": switch_id})
-    response_json = response.json()
-    if response.status_code != 200:
-        return SwitchStatus.ERROR
-    elif not response_json["output"]:
-        return SwitchStatus.OFF
-    else:
-        return (
-            SwitchStatus.IDLE if response_json["apower"] == 0 else SwitchStatus.RUNNING
-        )
+    async def async_set_switch(self, on: bool, switch_id: int = 0):
+        command_url = f"{self.url}/rpc/Switch.Set?id={switch_id}&on={str(on).lower()}"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(command_url)
+        if response.status_code != 200:
+            raise Exception(f"Failed to set switch state to {on}")
+
+    @property
+    def status(self):
+        return self._status
 
 
 async def get_denon():
     d = denonavr.DenonAVR(os.getenv("RECEIVER_IP"))
     await d.async_setup()
-    await d.async_update()
     return d
 
 
 async def startup_receiver(d):
     # todo see if we can tighten the timing
     # do we need the delays after boot?
-    await d.async_power_on()
-    await asyncio.sleep(10)  # wait for receiver to boot and inputs to be hijacked
+    await d.async_update()
+    if d.state != "on":
+        await d.async_power_on()
+        await asyncio.sleep(10)  # wait for receiver to boot and inputs to be hijacked
 
     # we sleep inbetween commands to allow the receiver to process them
     await d.async_set_input_func(os.getenv("TT_INPUT"))
     await asyncio.sleep(2)
     await d.async_update()  # we want to check the sound mode for the new input
 
-    if d.sound_mode != os.getenv("SOUND_MODE"):  # todo change in Env
+    if d.sound_mode != os.getenv("SOUND_MODE"):
         await d.async_set_sound_mode(os.getenv("SOUND_MODE"))
         await asyncio.sleep(2)
 
-    await d.async_set_volume(float(os.getenv("VOLUME")))  # todo change in Env
+    await d.async_set_volume(float(os.getenv("VOLUME")))
 
 
-async def shutdown_receiver(d: denonavr.DenonAVR):
-    await d.async_update()
-    if d.input_func == os.getenv("TT_INPUT"):
-        await d.async_power_off()
-
-
-async def run():
-    tt_url = os.getenv("TT_URL")
-    pre_url = os.getenv("PRE_AMP_URL")
-    set_switch(tt_url, True)
-
+async def shutdown(d: denonavr.DenonAVR, p: SwitchController):
     # avoid turning off the preamp if the AMP is on the input to prevent pops
+    await d.async_update()
+    if d.input_func == os.getenv(
+        "TT_INPUT"
+    ):  # don't turn off if in use by another input
+        await d.async_power_off()
+        sleep(2)
+
+    await p.async_set_switch(False)
+
+
+# todo make a class and load all ENVs in the constructor
+async def run():
+    tt_switch = SwitchController(os.getenv("TT_URL"))
+    pre_switch = SwitchController(os.getenv("PRE_AMP_URL"))
+
     denon = await get_denon()
-    await shutdown_receiver(denon)
-    set_switch(pre_url, False)
+    await asyncio.gather(tt_switch.async_set_switch(True), shutdown(denon, pre_switch))
 
     logger = logging.getLogger()
     logger.info("Starting TT control program")
@@ -96,23 +115,24 @@ async def run():
     program_state = ProgramState.IDLE
     state_start = datetime.now(timezone.utc)
     while True:
-        status = get_switch_status(tt_url)
+        await tt_switch.async_update_status()
         old_program_state = program_state
         time_in_state = timedelta(
             seconds=int((datetime.now(timezone.utc) - state_start).total_seconds())
         )
         # Check if we need to transition to a new state
-        match (program_state, status):
+        match (program_state, tt_switch.status):
             case (ProgramState.IDLE, SwitchStatus.RUNNING):
-                set_switch(pre_url, True)
-                await startup_receiver(denon)
+                await asyncio.gather(
+                    pre_switch.async_set_switch(True), startup_receiver(denon)
+                )
                 program_state = ProgramState.RUNNING
             case (ProgramState.RUNNING, _):
-                if status == SwitchStatus.IDLE:
+                if tt_switch.status == SwitchStatus.IDLE:
                     program_state = ProgramState.STANDBY
-                    if time_in_state > timedelta(
-                        seconds=60
-                    ):  # ignore short plays to allow for startup toggles
+                    if (
+                        time_in_state > timedelta(seconds=60)
+                    ):  # ignore short plays to allow for startup toggles and record cleaning
                         db.insert_record_play(time_in_state, cur_session_id)
                         total_playtime = timedelta(seconds=db.get_total_runtime())
                         logger.info(
@@ -124,13 +144,12 @@ async def run():
                     program_state = ProgramState.WARN
 
             case (ProgramState.STANDBY, _):
-                if status == SwitchStatus.RUNNING:  # resuming playback
+                if tt_switch.status == SwitchStatus.RUNNING:  # resuming playback
                     program_state = ProgramState.RUNNING
                 elif time_in_state > timedelta(
                     seconds=int(os.getenv("SHUTDOWN_DELAY"))
                 ):
-                    await shutdown_receiver(denon)
-                    set_switch(pre_url, False)
+                    await shutdown(denon, pre_switch)
                     session_playtime = timedelta(
                         seconds=db.get_session_runtime(cur_session_id)
                     )
@@ -145,7 +164,7 @@ async def run():
             state_start = datetime.now(timezone.utc)
             logger.info(f"Transitioning from {old_program_state} to {program_state}")
 
-        if status == SwitchStatus.ERROR:
+        if tt_switch.status == SwitchStatus.ERROR:
             logger.error(
                 "Error getting switch status program state will be static until recovery"
             )
