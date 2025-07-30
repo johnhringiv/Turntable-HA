@@ -49,7 +49,7 @@ See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for va
 | `SOUND_MODE`     | The sound mode for the receiver    | `PURE DIRECT`           |
 | `VOLUME`         | The volume level for the receiver  | `-30`                   |
 | `SHUTDOWN_DELAY` | The shutdown delay in seconds      | `300`                   |
- | `DB_FOLDER`      | The folder to store the database   | `/data`                 |
+| `DB_FOLDER`      | The folder to store the database   | `/data`                 |
 
 
 ### Run With Python

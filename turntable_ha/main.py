@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from functools import wraps
 from time import sleep
 
 import denonavr
@@ -25,11 +26,30 @@ class ProgramState(Enum):
     STANDBY = 6
 
 
+def retry(times, exception):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            func_err = None
+            for attempt in range(1, times + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except exception as e:
+                    await asyncio.sleep(attempt * 2)
+                    func_err = e
+            raise func_err
+
+        return wrapper
+
+    return decorator
+
+
 class SwitchController:
     def __init__(self, url: str):
         self.url = url
         self._status = None
 
+    @retry(3, httpx.RequestError)
     async def async_update_status(self, switch_id: int = 0):
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -47,6 +67,7 @@ class SwitchController:
                 else SwitchStatus.RUNNING
             )
 
+    @retry(3, httpx.RequestError)
     async def async_set_switch(self, on: bool, switch_id: int = 0):
         command_url = f"{self.url}/rpc/Switch.Set?id={switch_id}&on={str(on).lower()}"
         async with httpx.AsyncClient() as client:
