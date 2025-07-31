@@ -36,9 +36,9 @@ RUN mkdir -p /data
 
 
 # Set environment variables, these aren't secrets so it's fine to set them here
-ENV RECEIVER_IP="192.168.55.22"
-ENV TT_URL="http://192.168.55.203"
-ENV PRE_AMP_URL="http://192.168.55.165"
+ENV RECEIVER_IP="192.168.55.73"
+ENV TT_URL="http://192.168.55.78"
+ENV PRE_AMP_URL="http://192.168.55.77"
 ENV TT_INPUT="CD"
 ENV SOUND_MODE="STEREO"
 ENV VOLUME=-30

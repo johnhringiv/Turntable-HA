@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import wraps
-from time import sleep
 
 import denonavr
 import httpx
@@ -48,13 +47,13 @@ class SwitchController:
     def __init__(self, url: str):
         self.url = url
         self._status = None
+        self.client = httpx.AsyncClient(timeout=5.0)
 
-    @retry(3, httpx.RequestError)
+    @retry(3, httpx.TimeoutException)
     async def async_update_status(self, switch_id: int = 0):
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.url}/rpc/Switch.GetStatus", params={"id": switch_id}
-            )
+        response = await self.client.get(
+            f"{self.url}/rpc/Switch.GetStatus", params={"id": switch_id}
+        )
         response_json = response.json()
         if response.status_code != 200:
             self._status = SwitchStatus.ERROR
@@ -67,11 +66,10 @@ class SwitchController:
                 else SwitchStatus.RUNNING
             )
 
-    @retry(3, httpx.RequestError)
+    @retry(3, httpx.TimeoutException)
     async def async_set_switch(self, on: bool, switch_id: int = 0):
         command_url = f"{self.url}/rpc/Switch.Set?id={switch_id}&on={str(on).lower()}"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(command_url)
+        response = await self.client.get(command_url)
         if response.status_code != 200:
             raise Exception(f"Failed to set switch state to {on}")
 
@@ -113,7 +111,7 @@ async def shutdown(d: denonavr.DenonAVR, p: SwitchController):
         "TT_INPUT"
     ):  # don't turn off if in use by another input
         await d.async_power_off()
-        sleep(2)
+        await asyncio.sleep(2)
 
     await p.async_set_switch(False)
 
@@ -189,7 +187,7 @@ async def run():
                 "Error getting switch status program state will be static until recovery"
             )
 
-        sleep(2)
+        await asyncio.sleep(2)
 
 
 if __name__ == "__main__":
@@ -204,4 +202,6 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S %Z",
     )
+    # Reduce httpx logging to only show warnings and errors
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     asyncio.run(run())
