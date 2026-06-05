@@ -46,9 +46,10 @@ See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for va
 | `TT_URL`         | The URL of your turntable plug     | `http://192.168.55.203` |
 | `PRE_AMP_URL`    | The URL of your pre-amplifier plug | `http://192.168.55.205` |
 | `TT_INPUT`       | The input for the turntable        | `CD`                    |
-| `SOUND_MODE`     | The sound mode for the receiver    | `PURE DIRECT`           |
+| `SOUND_MODE`     | The sound mode for the receiver (optional, default `STEREO`) | `PURE DIRECT` |
 | `VOLUME`         | The volume level for the receiver  | `-30`                   |
 | `SHUTDOWN_DELAY` | The shutdown delay in seconds      | `300`                   |
+| `POWER_THRESHOLD`| Watts above which the TT is "playing" (optional, default `2`) | `2`     |
 | `DB_FOLDER`      | The folder to store the database   | `/data`                 |
 
 

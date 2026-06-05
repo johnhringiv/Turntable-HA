@@ -15,7 +15,9 @@ class RecordPlaysDB:
         db_folder = Path(os.getenv("DB_FOLDER"))
         self.db_path = db_folder / "record_plays.db"
         self.db_path.parent.mkdir(exist_ok=True)
-        self._conn = sqlite3.connect(self.db_path)
+        # busy timeout so a transient lock raises OperationalError rather than
+        # hanging the control loop indefinitely.
+        self._conn = sqlite3.connect(self.db_path, timeout=5)
         self._cursor = self._conn.cursor()
         self._create_table()
 
@@ -28,6 +30,26 @@ class RecordPlaysDB:
                 session_id INTEGER
             )
         """)
+        # Persistent session-id counter. Sessions where every play is shorter
+        # than the recording threshold insert no record_plays rows, so deriving
+        # the next id from MAX(record_plays.session_id) would reuse ids across
+        # restarts and merge unrelated sessions. Tracking the counter here makes
+        # each allocated session id unique for the life of the database.
+        self._cursor.execute("""
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value INTEGER
+            )
+        """)
+        self._cursor.execute("SELECT value FROM meta WHERE key = 'next_session_id'")
+        if self._cursor.fetchone() is None:
+            # Seed from any legacy data so we never collide with existing ids.
+            self._cursor.execute("SELECT MAX(session_id) FROM record_plays")
+            legacy_max = self._cursor.fetchone()[0] or 0
+            self._cursor.execute(
+                "INSERT INTO meta (key, value) VALUES ('next_session_id', ?)",
+                (legacy_max + 1,),
+            )
         self._conn.commit()
 
     def insert_record_play(self, runtime: timedelta, session_id):
@@ -38,10 +60,16 @@ class RecordPlaysDB:
         )
         self._conn.commit()
 
-    def get_next_session_id(self) -> int:
-        self._cursor.execute("SELECT MAX(session_id) FROM record_plays")
-        result = self._cursor.fetchone()
-        return result[0] + 1 if result[0] else 1
+    def start_session(self) -> int:
+        """Atomically allocate and persist a new, unique session id."""
+        self._cursor.execute("SELECT value FROM meta WHERE key = 'next_session_id'")
+        session_id = self._cursor.fetchone()[0]
+        self._cursor.execute(
+            "UPDATE meta SET value = ? WHERE key = 'next_session_id'",
+            (session_id + 1,),
+        )
+        self._conn.commit()
+        return session_id
 
     def get_session_runtime(self, session_id) -> int:
         self._cursor.execute(
