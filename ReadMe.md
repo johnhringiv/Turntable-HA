@@ -46,16 +46,17 @@ See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for va
 | `TT_URL`         | The URL of your turntable plug     | `http://192.168.55.203` |
 | `PRE_AMP_URL`    | The URL of your pre-amplifier plug | `http://192.168.55.205` |
 | `TT_INPUT`       | The input for the turntable        | `CD`                    |
-| `SOUND_MODE`     | The sound mode for the receiver    | `PURE DIRECT`           |
+| `SOUND_MODE`     | The sound mode for the receiver (optional, default `STEREO`) | `PURE DIRECT` |
 | `VOLUME`         | The volume level for the receiver  | `-30`                   |
 | `SHUTDOWN_DELAY` | The shutdown delay in seconds      | `300`                   |
- | `DB_FOLDER`      | The folder to store the database   | `/data`                 |
+| `POWER_THRESHOLD`| Watts above which the TT is "playing" (optional, default `2`) | `2`     |
+| `DB_FOLDER`      | The folder to store the database   | `/data`                 |
 
 
 ### Run With Python
 ```sh
- pip install -r requirements.txt
- python src/main.py
+ uv pip sync uv.lock
+ python turntable_ha/main.py
  ```
 
 ### Build and Run With Docker
@@ -67,4 +68,4 @@ See the [denonavr](https://github.com/ol-iver/denonavr/tree/main) package for va
 Note the volume mount required to persist the SQLite database.
 
 ## Future Work
-* Use Philips Hue to blink lights in warning mode
+* Use Pushbullet to send notifications to my phone for warning mode
